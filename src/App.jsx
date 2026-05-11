@@ -21,30 +21,10 @@ function App() {
     if (savedVehicle) {
       setVehicle(JSON.parse(savedVehicle));
     }
-    
-    const savedPct = localStorage.getItem('ev_current_pct');
-    if (savedPct) setCurrentPct(savedPct);
-    
-    const savedAec = localStorage.getItem('ev_current_aec');
-    if (savedAec) setCurrentAec(savedAec);
-    
-    const savedDest = localStorage.getItem('ev_destination_km');
-    if (savedDest) setDestinationKm(savedDest);
-    
     setIsReady(true);
   }, []);
 
-  useEffect(() => {
-    if (currentPct !== '') localStorage.setItem('ev_current_pct', currentPct);
-  }, [currentPct]);
 
-  useEffect(() => {
-    if (currentAec !== '') localStorage.setItem('ev_current_aec', currentAec);
-  }, [currentAec]);
-
-  useEffect(() => {
-    if (destinationKm !== '') localStorage.setItem('ev_destination_km', destinationKm);
-  }, [destinationKm]);
 
   const handleRegister = (e) => {
     e.preventDefault();
@@ -127,10 +107,10 @@ function App() {
   let neededWith20Buffer = 0;
   
   let plus5Needed = 0;
-  let plus5With15Buffer = 0;
+  let plus5With20Buffer = 0;
   
   let plus10Needed = 0;
-  let plus10With15Buffer = 0;
+  let plus10With20Buffer = 0;
 
   if (p > 0 && a > 0 && c > 0) {
     currentRange = (c * 1000 * (p / 100)) / a;
@@ -142,11 +122,39 @@ function App() {
     neededWith20Buffer = neededPct + 20;
 
     plus5Needed = (d * (a + 5)) / (10 * c);
-    plus5With15Buffer = plus5Needed + 15;
+    plus5With20Buffer = plus5Needed + 20;
 
     plus10Needed = (d * (a + 10)) / (10 * c);
-    plus10With15Buffer = plus10Needed + 15;
+    plus10With20Buffer = plus10Needed + 20;
   }
+
+  const isValidPct = p >= 1 && p <= 100;
+  const isValidAec = a >= 50 && a <= 500;
+  const isInputValid = isValidPct && isValidAec;
+
+  const formatWithKwh = (pct) => {
+    const kwh = (pct / 100) * c;
+    return `${pct.toFixed(1)}% (${kwh.toFixed(1)} kWh)`;
+  };
+
+  const renderChargeStatus = (needed) => {
+    const diff = needed - p;
+    if (diff > 0) {
+      const diffKwh = (diff / 100) * c;
+      return (
+        <div style={{ color: 'var(--color-danger)', fontSize: '0.85rem', fontWeight: '700', marginTop: '4px' }}>
+          Charge {diff.toFixed(1)}% ({diffKwh.toFixed(1)} kWh)
+        </div>
+      );
+    }
+    const balance = p - needed;
+    const balanceKwh = (balance / 100) * c;
+    return (
+      <div style={{ color: 'var(--color-success)', fontSize: '0.85rem', fontWeight: '700', marginTop: '4px' }}>
+        Balance {balance.toFixed(1)}% ({balanceKwh.toFixed(1)} kWh)
+      </div>
+    );
+  };
 
   return (
     <div className="app-container">
@@ -193,9 +201,13 @@ function App() {
                       const kmPer1 = range / 100;
                       return (
                         <tr key={aecVal} className={parseFloat(currentAec) === aecVal ? 'highlight-row' : ''}>
-                          <td>{aecVal}</td>
-                          <td>{range.toFixed(0)} km</td>
-                          <td>{kmPer1.toFixed(1)} km</td>
+                          <td><strong>{aecVal}</strong> <small>Wh/km</small></td>
+                          <td style={{textAlign: 'center'}}>
+                            <div className="range-badge">{range.toFixed(0)} km</div>
+                          </td>
+                          <td style={{textAlign: 'right'}}>
+                            <div className="pct-info">1% = <strong>{kmPer1.toFixed(1)}</strong> km</div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -215,34 +227,59 @@ function App() {
             <label>Battery %</label>
             <input
               type="number"
-              min="0"
+              min="1"
               max="100"
               placeholder="e.g. 80"
               value={currentPct}
-              onChange={(e) => setCurrentPct(e.target.value)}
+              onChange={(e) => {
+                let val = e.target.value;
+                if (val !== '' && parseFloat(val) > 100) val = '100';
+                if (val !== '' && parseFloat(val) < 0) val = '0'; // Allow typing 0 temporarily
+                setCurrentPct(val);
+              }}
+              onBlur={(e) => {
+                if (e.target.value !== '' && parseFloat(e.target.value) < 1) setCurrentPct('1');
+              }}
+              required
             />
           </div>
           <div className="form-group">
             <label>AEC (Wh/km)</label>
             <input
               type="number"
-              min="0"
+              min="50"
+              max="500"
               placeholder="e.g. 120"
               value={currentAec}
-              onChange={(e) => setCurrentAec(e.target.value)}
+              onChange={(e) => {
+                let val = e.target.value;
+                if (val !== '' && parseFloat(val) > 500) val = '500';
+                setCurrentAec(val);
+              }}
+              onBlur={(e) => {
+                if (e.target.value !== '' && parseFloat(e.target.value) < 50) setCurrentAec('50');
+              }}
+              required
             />
           </div>
         </div>
 
-        {p > 0 && a > 0 && (
+        {!isValidPct && currentPct !== '' && (
+          <div className="error-msg">Battery must be between 1% and 100%</div>
+        )}
+        {!isValidAec && currentAec !== '' && (
+          <div className="error-msg">AEC must be between 50 and 500 Wh/km</div>
+        )}
+
+        {isInputValid && p > 0 && a > 0 && (
           <div className="grid-2" style={{ marginTop: '16px' }}>
             <div className="stat-box">
-              <span className="stat-value">{currentRange.toFixed(1)} <span style={{fontSize: '1rem'}}>km</span></span>
-              <span className="stat-label">Est. Range</span>
+              <span className="stat-value">{currentRange.toFixed(1)} <span style={{fontSize: '0.9rem'}}>km</span></span>
+              <span className="stat-label">Est. Range ({((p/100)*c).toFixed(1)} kWh)</span>
             </div>
             <div className="stat-box">
-              <span className="stat-value">{kmPerPct.toFixed(2)} <span style={{fontSize: '1rem'}}>km</span></span>
-              <span className="stat-label">Per 1%</span>
+              <span className="stat-value">{kmPerPct.toFixed(2)} <span style={{fontSize: '0.9rem'}}>km</span></span>
+              <span className="stat-label">Per 1% ({((1/100)*c).toFixed(2)} kWh)</span>
             </div>
           </div>
         )}
@@ -259,47 +296,59 @@ function App() {
             placeholder="e.g. 150"
             value={destinationKm}
             onChange={(e) => setDestinationKm(e.target.value)}
+            required
           />
         </div>
 
-        {d > 0 && a > 0 && (
+        {isInputValid && d > 0 && a > 0 && (
           <div style={{ marginTop: '20px' }}>
             <div className="grid-2">
-              <div className="stat-box" style={{ borderColor: 'var(--color-primary)' }}>
-                <span className="stat-value">{neededPct.toFixed(1)}%</span>
+              <div className="stat-box" style={{ borderColor: neededPct > p ? 'var(--color-danger)' : 'var(--color-primary)' }}>
+                <span className="stat-value" style={{fontSize: '1.2rem'}}>{formatWithKwh(neededPct)}</span>
                 <span className="stat-label">Needed</span>
+                {renderChargeStatus(neededPct)}
               </div>
-              <div className="stat-box" style={{ borderColor: 'var(--color-success)', backgroundColor: 'var(--color-success-light)' }}>
-                <span className="stat-value" style={{color: 'var(--color-success)'}}>{neededWith20Buffer.toFixed(1)}%</span>
+              <div className="stat-box" style={{ 
+                borderColor: neededWith20Buffer > p ? 'var(--color-danger)' : 'var(--color-success)', 
+                backgroundColor: neededWith20Buffer > p ? 'var(--color-danger-light)' : 'var(--color-success-light)' 
+              }}>
+                <span className="stat-value" style={{color: neededWith20Buffer > p ? 'var(--color-danger)' : 'var(--color-success)', fontSize: '1.2rem'}}>{formatWithKwh(neededWith20Buffer)}</span>
                 <span className="stat-label">With 20% Buffer</span>
+                {renderChargeStatus(neededWith20Buffer)}
               </div>
             </div>
 
             {/* Warnings */}
-            <div className="warning-card">
-              <div className="warning-card-header">
+            <div className="warning-section">
+              <div className="section-header">
                 <AlertTriangle size={20} />
                 <span>High Consumption Warnings</span>
               </div>
-              <p className="helper-text" style={{marginBottom: '12px'}}>If AEC increases due to speed or terrain:</p>
+              <p className="helper-text">If consumption increases due to speed/terrain:</p>
               
-              <div className="warning-item">
-                <div className="warning-label">
-                  AEC +5 ({a + 5} Wh/km)
+              <div className="warning-grid">
+                <div className="warning-card-mini">
+                  <div className="warning-title">AEC +5 <small>({a + 5} Wh/km)</small></div>
+                  <div className="warning-content">
+                    <div className="main-stat">{formatWithKwh(plus5Needed)} <small>needed</small></div>
+                    <div className="sub-stat">
+                      <strong>With 20% Buffer:</strong>
+                      <span>{formatWithKwh(plus5With20Buffer)}</span>
+                    </div>
+                    {renderChargeStatus(plus5With20Buffer)}
+                  </div>
                 </div>
-                <div style={{textAlign: 'right'}}>
-                  <div className="warning-val danger-text">{plus5Needed.toFixed(1)}% needed</div>
-                  <div className="buffer-text">With 15% buffer: {plus5With15Buffer.toFixed(1)}%</div>
-                </div>
-              </div>
 
-              <div className="warning-item">
-                <div className="warning-label">
-                  AEC +10 ({a + 10} Wh/km)
-                </div>
-                <div style={{textAlign: 'right'}}>
-                  <div className="warning-val danger-text">{plus10Needed.toFixed(1)}% needed</div>
-                  <div className="buffer-text">With 15% buffer: {plus10With15Buffer.toFixed(1)}%</div>
+                <div className="warning-card-mini">
+                  <div className="warning-title">AEC +10 <small>({a + 10} Wh/km)</small></div>
+                  <div className="warning-content">
+                    <div className="main-stat">{formatWithKwh(plus10Needed)} <small>needed</small></div>
+                    <div className="sub-stat">
+                      <strong>With 20% Buffer:</strong>
+                      <span>{formatWithKwh(plus10With20Buffer)}</span>
+                    </div>
+                    {renderChargeStatus(plus10With20Buffer)}
+                  </div>
                 </div>
               </div>
             </div>
