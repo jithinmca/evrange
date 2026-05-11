@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Battery, BatteryCharging, Car, Settings, AlertTriangle, Navigation, Zap, MapPin } from 'lucide-react';
+import { Battery, BatteryCharging, Car, Settings, AlertTriangle, Navigation, Zap, MapPin, List, X } from 'lucide-react';
 
 function App() {
   const [vehicle, setVehicle] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [showReference, setShowReference] = useState(false);
 
   // Registration state
   const [nameInput, setNameInput] = useState('');
@@ -20,8 +21,30 @@ function App() {
     if (savedVehicle) {
       setVehicle(JSON.parse(savedVehicle));
     }
+    
+    const savedPct = localStorage.getItem('ev_current_pct');
+    if (savedPct) setCurrentPct(savedPct);
+    
+    const savedAec = localStorage.getItem('ev_current_aec');
+    if (savedAec) setCurrentAec(savedAec);
+    
+    const savedDest = localStorage.getItem('ev_destination_km');
+    if (savedDest) setDestinationKm(savedDest);
+    
     setIsReady(true);
   }, []);
+
+  useEffect(() => {
+    if (currentPct !== '') localStorage.setItem('ev_current_pct', currentPct);
+  }, [currentPct]);
+
+  useEffect(() => {
+    if (currentAec !== '') localStorage.setItem('ev_current_aec', currentAec);
+  }, [currentAec]);
+
+  useEffect(() => {
+    if (destinationKm !== '') localStorage.setItem('ev_destination_km', destinationKm);
+  }, [destinationKm]);
 
   const handleRegister = (e) => {
     e.preventDefault();
@@ -134,11 +157,55 @@ function App() {
           <p>{vehicle.capacity} kWh Battery</p>
         </div>
         <div className="vehicle-actions">
+          <button className="btn-icon" onClick={() => setShowReference(true)} aria-label="Reference Table" style={{marginRight: '8px'}}>
+            <List size={20} />
+          </button>
           <button className="btn-icon" onClick={handleEdit} aria-label="Edit Vehicle">
             <Settings size={20} />
           </button>
         </div>
       </div>
+
+      {/* Reference Table Modal */}
+      {showReference && (
+        <div className="modal-overlay" onClick={() => setShowReference(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>AEC Reference Table</h3>
+              <button className="btn-icon" onClick={() => setShowReference(false)}>
+                <X size={24} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="helper-text" style={{marginBottom: '16px'}}>Based on {vehicle.capacity} kWh battery</p>
+              <div className="table-wrapper">
+                <table className="ref-table">
+                  <thead>
+                    <tr>
+                      <th>AEC (Wh/km)</th>
+                      <th>Full Range</th>
+                      <th>1% ≈ km</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: 31 }, (_, i) => 100 + i * 5).map(aecVal => {
+                      const range = (vehicle.capacity * 1000) / aecVal;
+                      const kmPer1 = range / 100;
+                      return (
+                        <tr key={aecVal} className={parseFloat(currentAec) === aecVal ? 'highlight-row' : ''}>
+                          <td>{aecVal}</td>
+                          <td>{range.toFixed(0)} km</td>
+                          <td>{kmPer1.toFixed(1)} km</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Inputs */}
       <div className="card glow">
